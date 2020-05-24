@@ -19,9 +19,6 @@ class TestDataSource extends KnexDataSource {
 }
 
 
-// const Knex = require("knex");
-// const { SQLDataSource } = require("./index");
-
 describe("jest", () => {
   test("is configured", async () => {
     const testDataSource = new TestDataSource(knex);

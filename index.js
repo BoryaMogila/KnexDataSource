@@ -1,46 +1,32 @@
-const crypto = require("crypto");
-const { DataSource } = require("apollo-datasource");
 const { InMemoryLRUCache } = require("apollo-server-caching");
-const Knex = require("knex");
-const knexTinyLogger = require("knex-tiny-logger").default;
+const { DataSource } = require("apollo-datasource");
+const crc = require('crc')
 
 const { DEBUG } = process.env;
 
-Knex.QueryBuilder.extend("load", function(ttl) {
-  return this.client.load(ttl, this);
-});
-
-class SQLDataSource extends DataSource {
-  constructor(knexConfig) {
-    super();
-    this.memoizedResults = new Map();
-    this.context;
-    this.cache;
-    this.db = Knex(knexConfig);
-    const _this = this;
-    this.db.client.load = (ttl, query) => {
-      return _this.load(ttl, query);
-    };
-    if (DEBUG) {
-      knexTinyLogger(this.db); // Add a logging utility for debugging
-    }
-  }
-
-  initialize({ context = {}, cache = new InMemoryLRUCache() } = {}) {
-    this.context = context;
-    this.cache = cache;
+class KnexDataSource extends DataSource {
+  constructor(props) {
+    super(props);
+    this.cache = new InMemoryLRUCache();
     this.memoizedResults = new Map();
   }
-
-  getCacheKey(ttl = "", query) {
-    return crypto
-      .createHash("sha1")
-      .update(`${query.toString()}_${ttl}`)
-      .digest("base64");
+  initialize(config = {}) {
+    this.memoizedResults = new Map();
+    this.context = config.context;
+    this.cache = config.cache || this.cache;
+    if (!this.db) throw configError;
   }
 
-  load(ttl, query) {
-    const cacheKey = this.getCacheKey(ttl, query);
+  getCacheKey(queryString) {
+    return crc.crc32(`${queryString}`).toString(16)
+  }
+
+  getCacheString(ttl = 0, query) {
+    return `${query.toString()}${!ttl ? '' : `_${ttl}`}`
+  }
+
+  getPromise({ query, ttl, cacheString }){
+    const cacheKey = this.getCacheKey(cacheString);
     let promise = this.memoizedResults.get(cacheKey);
     if (promise) return promise;
     if (!ttl) {
@@ -53,7 +39,16 @@ class SQLDataSource extends DataSource {
     return promise;
   }
 
-  getResult(ttl, query, cacheKey) {
+  async execute(query, ttl = 0) {
+    const cacheString = this.getCacheString(ttl, query);
+    if (!DEBUG) return this.getPromise({ query, ttl, cacheString });
+    console.time(cacheString);
+    const res = await this.getPromise({ query, ttl, cacheString });
+    console.timeEnd(cacheString);
+    return res;
+  }
+
+  getResult(ttl = 0, query, cacheKey) {
     return query.then(rows => {
       if (!ttl || !rows) return Promise.resolve(rows);
       this.cache.set(cacheKey, JSON.stringify(rows), { ttl });
@@ -61,7 +56,7 @@ class SQLDataSource extends DataSource {
     });
   }
 
-  cacheQuery(ttl, query, cacheKey) {
+  cacheQuery(ttl = 0, query, cacheKey) {
     return this.cache.get(cacheKey).then(entry => {
       if (entry) return Promise.resolve(JSON.parse(entry));
       return this.getResult(ttl, query, cacheKey);
@@ -69,4 +64,4 @@ class SQLDataSource extends DataSource {
   }
 }
 
-module.exports = { SQLDataSource };
+module.exports = KnexDataSource;
