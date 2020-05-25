@@ -39,12 +39,21 @@ class KnexDataSource extends DataSource {
     return promise;
   }
 
+  measureStartTime() {
+    return process.hrtime()
+  }
+
+  measureDuration(startTime) {
+    const diff = process.hrtime(startTime)
+    return  diff[0] * 1e3 + diff[1] * 1e-6;
+  }
+
   async execute(query, ttl = 0) {
     const cacheString = this.getCacheString(ttl, query);
     if (!DEBUG) return this.getPromise({ query, ttl, cacheString });
-    console.time(cacheString);
+    const startTime = this.measureStartTime()
     const res = await this.getPromise({ query, ttl, cacheString });
-    console.timeEnd(cacheString);
+    console.log(cacheString, `SQL (${this.measureDuration(startTime).toFixed(3)} ms)`);
     return res;
   }
 
