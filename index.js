@@ -17,16 +17,16 @@ class KnexDataSource extends DataSource {
     if (!this.db) throw configError;
   }
 
-  getCacheKey(queryString) {
-    return crc.crc32(`${queryString}`).toString(16)
+  getCacheKey(queryString, ttl= 0) {
+    return `sqlcache:${crc.crc32(`${queryString}${!ttl ? '' : `_${ttl}`}`).toString(16)}`
   }
 
-  getCacheString(ttl = 0, query) {
-    return `${query.toString()}${!ttl ? '' : `_${ttl}`}`
+  getQueryString(query) {
+    return query.toString()
   }
 
   getPromise({ query, ttl, cacheString }){
-    const cacheKey = this.getCacheKey(cacheString);
+    const cacheKey = this.getCacheKey(cacheString, ttl);
     let promise = this.memoizedResults.get(cacheKey);
     if (promise) return promise;
     if (!ttl) {
@@ -49,11 +49,11 @@ class KnexDataSource extends DataSource {
   }
 
   async execute(query, ttl = 0) {
-    const cacheString = this.getCacheString(ttl, query);
+    const cacheString = this.getQueryString(query);
     if (!DEBUG) return this.getPromise({ query, ttl, cacheString });
     const startTime = this.measureStartTime()
     const res = await this.getPromise({ query, ttl, cacheString });
-    console.log(cacheString, `SQL (${this.measureDuration(startTime).toFixed(3)} ms)`);
+    console.log(cacheString, `(${this.measureDuration(startTime).toFixed(3)} ms);`, `cache time (${ttl} s)`);
     return res;
   }
 
