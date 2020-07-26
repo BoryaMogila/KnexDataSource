@@ -31,7 +31,7 @@ class KnexDataSource extends DataSource {
     if (promise) return promise;
     if (!ttl) {
       promise = this.getResult(ttl, query, cacheKey);
-      this.memoizedResults.set(cacheKey, this.getResult(ttl, query, cacheKey));
+      this.memoizedResults.set(cacheKey, promise);
       return promise;
     }
     promise = this.cacheQuery(ttl, query, cacheKey);
